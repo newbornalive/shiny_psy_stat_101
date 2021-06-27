@@ -1,2 +1,4 @@
 # shiny_psy_stat_101
-runGitHub("shiny_example", "rstudio", subdir = "inst/shinyapp/")
+runGitHub("shiny_psy_stat_101","newbornalive",ref="central-tendency")
+runGitHub("shiny_psy_stat_101","newbornalive",ref="range-var-sd")
+
