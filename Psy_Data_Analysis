@@ -1,0 +1,121 @@
+library(shiny)
+library(shinyWidgets)
+library(ggplot2)
+library(dplyr)
+library(purrr)
+library(RColorBrewer)
+library(scales)
+library(ggiraph)
+library(summarytools)
+library(stats)
+library(car)
+library(MASS)
+library(DT)
+
+# Function to extract numerical input from text
+extract <- function(text) {
+  text <- gsub(" ", "", text)
+  split <- strsplit(text, ",", fixed = FALSE)[[1]]
+  as.numeric(split)
+}
+
+ui <- fluidPage(
+  titlePanel("Psychology Data Analysis Dashboard"),
+  sidebarLayout(
+    sidebarPanel(
+      fileInput("file", "Upload CSV File", accept = ".csv"),
+      selectInput("var1", "Select Variable 1", choices = NULL),
+      selectInput("var2", "Select Variable 2", choices = NULL),
+      selectInput("test", "Select Statistical Test", 
+                  choices = c("One-Sample t-test", "Two-Sample t-test", "Chi-Square Test", "Simple Linear Regression", "Multiple Linear Regression")),
+      actionButton("analyze", "Run Analysis")
+    ),
+    mainPanel(
+      tabsetPanel(
+        tabPanel("EDA", 
+                 DTOutput("summary_table"), 
+                 plotOutput("hist_plot"),
+                 plotOutput("box_plot")),
+        tabPanel("Cross-Tabulation", DTOutput("crosstab")),
+        tabPanel("Statistical Tests", verbatimTextOutput("test_result")),
+        tabPanel("Regression Analysis", verbatimTextOutput("regression_result"), plotOutput("regression_plot"))
+      )
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  data <- reactive({
+    req(input$file)
+    read.csv(input$file$datapath)
+  })
+  
+  observe({
+    updateSelectInput(session, "var1", choices = names(data()))
+    updateSelectInput(session, "var2", choices = names(data()))
+  })
+  
+  output$summary_table <- renderDT({
+    req(data())
+    datatable(summarytools::dfSummary(data()), options = list(scrollX = TRUE))
+  })
+  
+  output$hist_plot <- renderPlot({
+    req(input$var1)
+    ggplot(data(), aes_string(input$var1)) + 
+      geom_histogram(fill = "blue", alpha = 0.6, bins = 30) +
+      theme_minimal()
+  })
+  
+  output$box_plot <- renderPlot({
+    req(input$var1)
+    ggplot(data(), aes_string(y = input$var1)) + 
+      geom_boxplot(fill = "green", alpha = 0.6) +
+      theme_minimal()
+  })
+  
+  output$crosstab <- renderDT({
+    req(input$var1, input$var2)
+    tab <- table(data()[[input$var1]], data()[[input$var2]])
+    datatable(as.data.frame.matrix(tab))
+  })
+  
+  output$test_result <- renderPrint({
+    req(input$var1, input$test)
+    df <- data()
+    var1 <- df[[input$var1]]
+    var2 <- if (!is.null(input$var2)) df[[input$var2]] else NULL
+    
+    if (input$test == "One-Sample t-test") {
+      print(t.test(var1, mu = mean(var1, na.rm = TRUE)))
+    } else if (input$test == "Two-Sample t-test") {
+      print(t.test(var1, var2, var.equal = TRUE))
+    } else if (input$test == "Chi-Square Test") {
+      print(chisq.test(table(var1, var2)))
+    }
+  })
+  
+  output$regression_result <- renderPrint({
+    req(input$var1, input$test)
+    df <- data()
+    
+    if (input$test == "Simple Linear Regression") {
+      model <- lm(as.formula(paste(input$var1, "~", input$var2)), data = df)
+      summary(model)
+    } else if (input$test == "Multiple Linear Regression") {
+      predictors <- setdiff(names(df), input$var1)
+      model <- lm(as.formula(paste(input$var1, "~", paste(predictors, collapse = "+"))), data = df)
+      summary(model)
+    }
+  })
+  
+  output$regression_plot <- renderPlot({
+    req(input$var1, input$var2)
+    ggplot(data(), aes_string(x = input$var2, y = input$var1)) + 
+      geom_point() + 
+      geom_smooth(method = "lm", se = FALSE, color = "red") +
+      theme_minimal()
+  })
+}
+
+shinyApp(ui = ui, server = server)
